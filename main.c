@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #define AU_STRING_IMPLEMENTATION
 #include "au_string.h"
+#include <stdio.h>
+#include <time.h>
 
 /*
 #define LIST(T, name)                                                                                                  \
@@ -238,7 +240,169 @@ bool push_at_list(List *l, int data, size_t index)
     return true;
 }
 
-int main()
-{
+
+typedef struct timespec timespec;
+
+timespec get_time() {
+    timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return t;
+}
+
+double get_elapsed_time(timespec start, timespec end) {
+    return (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) * 1e-9;
+}
+
+// Performance test functions
+void test_push_head(size_t n) {
+    List list = create_list();
+    timespec start = get_time();
+    for (size_t i = 0; i < n; ++i) {
+        push_head_list(&list, (int)i);
+    }
+    timespec end = get_time();
+    double elapsed = get_elapsed_time(start, end);
+    printf("Push head %8zu elements: %8.3f ms (%6.3f ns/op)\n",
+           n, elapsed * 1000, elapsed * 1e9 / n);
+
+    int dummy;
+    while (pop_head_list(&list, &dummy)) {}
+}
+
+void test_push_tail(size_t n) {
+    List list = create_list();
+    timespec start = get_time();
+    for (size_t i = 0; i < n; ++i) {
+        push_list(&list, (int)i);
+    }
+    timespec end = get_time();
+    double elapsed = get_elapsed_time(start, end);
+    printf("Push tail %8zu elements: %8.3f ms (%6.3f ns/op)\n",
+           n, elapsed * 1000, elapsed * 1e9 / n);
+
+    int dummy;
+    while (pop_list(&list, &dummy)) {}
+}
+
+void test_pop_head(size_t n) {
+    List list = create_list();
+    for (size_t i = 0; i < n; ++i) {
+        push_head_list(&list, (int)i);
+    }
+
+    timespec start = get_time();
+    int dummy;
+    for (size_t i = 0; i < n; ++i) {
+        pop_head_list(&list, &dummy);
+    }
+    timespec end = get_time();
+    double elapsed = get_elapsed_time(start, end);
+    printf("Pop head  %8zu elements: %8.3f ms (%6.3f ns/op)\n",
+           n, elapsed * 1000, elapsed * 1e9 / n);
+}
+
+void test_pop_tail(size_t n) {
+    List list = create_list();
+    for (size_t i = 0; i < n; ++i) {
+        push_list(&list, (int)i);
+    }
+
+    timespec start = get_time();
+    int dummy;
+    for (size_t i = 0; i < n; ++i) {
+        pop_list(&list, &dummy);
+    }
+    timespec end = get_time();
+    double elapsed = get_elapsed_time(start, end);
+    printf("Pop tail  %8zu elements: %8.3f ms (%6.3f ns/op)\n",
+           n, elapsed * 1000, elapsed * 1e9 / n);
+}
+
+void test_insert_middle(size_t n) {
+    List list = create_list();
+    timespec start = get_time();
+    for (size_t i = 0; i < n; ++i) {
+        size_t index = list.length / 2;
+        push_at_list(&list, (int)i, index);
+    }
+    timespec end = get_time();
+    double elapsed = get_elapsed_time(start, end);
+    printf("Insert mid%8zu elements: %8.3f ms (%6.3f ns/op)\n",
+           n, elapsed * 1000, elapsed * 1e9 / n);
+
+    int dummy;
+    while (pop_head_list(&list, &dummy)) {}
+}
+
+void test_pop_middle(size_t n) {
+    List list = create_list();
+    for (size_t i = 0; i < n; ++i) {
+        push_list(&list, (int)i);
+    }
+
+    timespec start = get_time();
+    int dummy;
+    for (size_t i = 0; i < n; ++i) {
+        size_t index = list.length / 2;
+        pop_at_list(&list, &dummy, index);
+    }
+    timespec end = get_time();
+    double elapsed = get_elapsed_time(start, end);
+    printf("Pop mid   %8zu elements: %8.3f ms (%6.3f ns/op)\n",
+           n, elapsed * 1000, elapsed * 1e9 / n);
+}
+
+void test_access_pattern(size_t n, size_t accesses, const char* desc) {
+    List list = create_list();
+    for (size_t i = 0; i < n; ++i) {
+        push_list(&list, (int)i);
+    }
+
+    timespec start = get_time();
+    for (size_t a = 0; a < accesses; ++a) {
+        // Access pattern: 0, n-1, n/2, n/4, 3n/4
+        Node* n1 = get_at_list(&list, 0);
+        Node* n2 = get_at_list(&list, n-1);
+        Node* n3 = get_at_list(&list, n/2);
+        Node* n4 = get_at_list(&list, n/4);
+        Node* n5 = get_at_list(&list, 3*n/4);
+        
+        // Prevent optimization
+        volatile int d1 = n1->data;
+        volatile int d2 = n2->data;
+        volatile int d3 = n3->data;
+        volatile int d4 = n4->data;
+        volatile int d5 = n5->data;
+
+        (void)d1;
+        (void)d2;
+        (void)d3;
+        (void)d4;
+        (void)d5;
+    }
+    timespec end = get_time();
+    double elapsed = get_elapsed_time(start, end);
+    printf("Access %-14s (size %zu): %6.3f ns/access\n",
+           desc, n, elapsed * 1e9 / (accesses * 5));
+
+    int dummy;
+    while (pop_list(&list, &dummy)) {}
+}
+
+int main() {
+    printf("=== Push/Pop Performance ===\n");
+    test_push_head(1000000);
+    test_push_tail(1000000);
+    test_pop_head(1000000);
+    test_pop_tail(1000000);
+
+    printf("\n=== Middle Operations (Quadratic Complexity) ===\n");
+    test_insert_middle(10000);
+    test_pop_middle(10000);
+
+    printf("\n=== Random Access Performance ===\n");
+    test_access_pattern(100000, 10000, "mixed");
+    test_access_pattern(1000000, 10000, "mixed");
+
     return 0;
 }
